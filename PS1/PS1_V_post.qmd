@@ -1,0 +1,84 @@
+---
+title: "quadratic equation"
+format: html
+author: Veronika Post
+editor: visual
+---
+
+# Quadratic Equation
+
+*High school lesson*
+
+Let's see how we can apply the quadratic equation and graphically demonstrate that the solution is correct.
+
+We have an equation:
+
+$$
+f(x) = ax^2 + bx + c = 0
+$$
+
+Let's define variables for this equation:
+
+```{r}
+a <- 1
+b <- 3
+c = 2
+```
+
+To find real solutions we can use the following equation:
+
+$$
+x = \frac{-b \pm \sqrt{b^2 -4ac}}{2a}
+$$
+
+Let's use code to find values of $x$ programmatically:
+
+```{r}
+# We have to account for the plus-minus sign in our solution
+
+# First, let's calculate the value that is under the square sign - 
+# it is called "discriminant".
+
+discr <- b^2 - 4*a*c
+
+# If discriminant is negative - we don't have any real solutions as there are 
+# no real numbers that would result in a negative square root
+if (discr < 0) {
+  cat("There are no real solutions.")
+  
+# If discriminant is positive we can calculate x1 and x2
+}else {
+  x_1 <- (-b + sqrt(discr)) / 2*a
+  x_2 <- (-b - sqrt(discr)) / 2*a
+  cat("The real solutions are x1:", x_1, "and x2:", x_2)
+}
+```
+
+We can check whether the values that we found are correct by plotting a graph of our function. On the plot below we can see two points where the curve of our function crosses the horizontal line where $y = 0$. These points are $(-1, 0)$ and $(2, 0)$.
+
+```{r}
+
+library(ggplot2)
+
+# We can use the 'ggplot2` library. To do so we can
+# create a dataframe of the x and y values.
+
+# To plot this function for values of x from -3 to 3 we have 
+# to calculate y values for each corresponding x using the formula above:
+xs <- seq(-3, 3, length.out = 100)
+ys <- a * xs^2 + b * xs + c
+
+data <- data.frame(x = xs, y = ys)
+
+# Note: I'm using geom_smooth to plot a smooth line instead of points 
+# - there might be a better way to do so.
+ggplot(data, aes(x, y)) +
+  geom_line() +
+  geom_smooth(method = "lm", se = FALSE, color = "transparent") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "blue") +
+  geom_point(aes(x = x_1, y = 0), color = "blue", size = 3) + 
+  geom_point(aes(x = x_2, y = 0), color = "blue", size = 3) +
+  scale_x_continuous(breaks = seq(-3, 3, 1)) +
+  labs(title = expression(paste("Graph of ", ax^2 + bx + c)),
+       x = "x", y = "y")
+```
