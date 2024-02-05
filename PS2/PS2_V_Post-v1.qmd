@@ -1,0 +1,186 @@
+---
+title: "PS2"
+author: "Veronika Post"
+format: html
+editor: visual
+---
+
+## Problem Set 2
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Measles
+
+1.  *Load the **dslabs** package and figure out what is in the `us_contagious_diseases` dataset. Create a data frame, call it `avg`, that has a column for `year`, and a `rate` column containing the cases of Measles per 10,000 people per year in the US. Because we start in 1928, exclude Alaska and Hawaii. Make sure to take into account the number of weeks reporting each year. If a week was not report, it should not be included in the calculation of the rate.*
+
+```{r echo:false}
+# install libraries
+library(tidyverse)
+library(dslabs)
+```
+
+Let's inspect the `us_contagious_diseases` dataset:
+
+```{r}
+head(us_contagious_diseases)
+```
+
+The us_contagious_diseases dataset has 16,065 rows of data - each is a count of reported cases of a disease in a specific year in a specific state.
+
+Using the command `?us_contagious_diseases` in R console in R Studio we can get some info on that dataset. The provided data description states: "Yearly counts for Hepatitis A, Measles, Mumps, Pertussis, Polio, Rubella, and Smallpox for US states. Original data courtesy of Tycho Project (http://www.tycho.pitt.edu/)."
+
+The variable dictionary is:
+
+-   **disease**. A factor containing disease names.
+
+-   **state**. A factor containing state names.
+
+-   **year**.
+
+-   **weeks_reporting**. Number of weeks counts were reported that year.
+
+-   **count**. Total number of reported cases.
+
+-   **population**. State population, interpolated for non-census years.
+
+We can see that some years there was weeks when the data was reported, the `weeks_reporting` column will have a zero in this case.
+
+```{r}
+# Find all the records with 0 week reported that year
+weeks_0 <- us_contagious_diseases %>% 
+  filter(weeks_reporting == 0)
+head(weeks_0)
+```
+
+There are 1,800 records like that!
+
+To accomplish what is asked in question 1:
+
+```{r}
+# Filter the rows by measles disease only
+# Exclude states Hawaii and Alaska
+# Remove the records where there were no weeks when data was reported
+
+# Taking an average of counts of measles in all the states each year
+avg <- us_contagious_diseases |> 
+    filter(disease == "Measles" & !state %in% c("Hawaii", "Alaska") & weeks_reporting > 0) |>
+    group_by(year) |>
+    summarize(rate = sum(count/weeks_reporting * 52, na.rm=TRUE)/sum(population) * 10,000)
+avg
+```
+
+```{r}
+# I get some strange "0" column - let's drop it to make the data cleaner
+avg = subset(avg, select = c("year","rate"))
+avg
+```
+
+2.  *Use the data frame avg to make a trend plot showing the cases rate for Measles per year. Add a vertical line showing the year the Measles vaccines was introduced.*
+
+```{r}
+# Measels vaccine was introduced in 1963
+meas_cases <- avg |> 
+  ggplot(aes(year, rate)) +  geom_line() +
+  geom_vline(xintercept = 1963, show.legend = TRUE, color = "chartreuse3") +
+  annotate("text", x = 1963, y = max(avg$rate), label = "1963 vaccine introduced", 
+           vjust = 1, hjust = 0, color = "chartreuse3") +
+  labs(title = "The rate of measels cases per year in US", x = "Year", y = "Rate of Measels cases per 10,000") +
+  theme_bw()
+
+meas_cases
+```
+
+3.  *Add a grey trend line for each state to the plot above. Use a transformation that keeps the high rates from dominating the figure.*
+
+4.  *In the plot above we can't tell which state is which curve. Using color would be challenging as it is hard if not impossible to find 48 colors humans can distinguish. To make a plot where you can compare states knowing which is which, use one of the axis for state and the other for year, and then use hue or intensity as a visual cue for rates. Use a sqrt transformation to avoid the higher rates taking up all the color scale. Use grey to denote missing data. Order the states based on their highest peak. You can include Hawaii and Alaska.*
+
+```{r}
+## use this color pallete
+reds <- RColorBrewer::brewer.pal(9, "Reds")
+#us_contagious_diseases |>
+```
+
+5.  *Incorporate one or more of the figures you just created to write a 2-3 page report, using quarto, describing the evidence these data show about vaccines in controlling disease. Upload your report and code to a GitHub repository.*
+
+Hera are some other plots that could serve as good visuals to show the effect of vaccines on disease cases.
+
+We can look at the data state by state. The examples of a couple of states are below.
+
+```{r}
+# Add column of measels cases per 10,000 people 
+state_trends <- us_contagious_diseases |>
+                filter(disease == "Measles" & !state %in% c("Hawaii", "Alaska") & weeks_reporting > 0) |>
+                mutate (cases_per_10000r = count/weeks_reporting * 52 /population * 10,000) |>
+                mutate(cases_per_10000 = sprintf("%.4f", cases_per_10000r))
+head(state_trends)
+```
+
+#### Alabama
+
+```{r}
+Alabama_df <- state_trends |> 
+           filter(state == "Alabama")
+
+#Plot Alabama data only
+Alabama_df |> 
+  ggplot(aes(year, cases_per_10000)) + 
+  geom_point() +
+  geom_vline(xintercept = 1963, show.legend = TRUE, color = "chartreuse3") +
+  annotate("text", x = 1963, y = max(Alabama_df$cases_per_10000), label = "1963 vaccine introduced", 
+           vjust = 2.5, hjust = 0, color = "chartreuse3") +
+  labs(title = "The rate of measels cases per year in Alabama", x = "Year", y = "Rate of Measels cases per 10,000") +
+  theme_bw()
+```
+
+#### California
+
+```{r}
+California_df <- state_trends |> 
+           filter(state == "California")
+
+#Plot California data only
+California_df |> 
+  ggplot(aes(year, cases_per_10000)) + 
+  geom_point() +
+  geom_vline(xintercept = 1963, show.legend = TRUE, color = "chartreuse3") +
+  annotate("text", x = 1963, y = max(California_df$cases_per_10000), label = "1963 vaccine introduced", 
+           vjust = 2.5, hjust = 0, color = "chartreuse3") +
+  labs(title = "The rate of measels cases per year in California", x = "Year", y = "Rate of Measels cases per 10,000") +
+  theme_bw()
+```
+
+#### New York state
+
+```{r}
+NY_df <- state_trends |> 
+           filter(state == "New York")
+
+#Plot NY state data only
+NY_df |> 
+  ggplot(aes(year, cases_per_10000)) + 
+  geom_point() +
+  geom_vline(xintercept = 1963, show.legend = TRUE, color = "chartreuse3") +
+  annotate("text", x = 1963, y = max(NY_df$cases_per_10000), label = "1963 vaccine introduced", 
+           vjust = 2.5, hjust = 0, color = "chartreuse3") +
+  labs(title = "The rate of measels cases per year in NY", x = "Year", y = "Rate of Measels cases per 10,000") +
+  theme_bw()
+```
+
+#### Massachusetts
+
+```{r}
+Mass_df <- state_trends |> 
+           filter(state == "Massachusetts")
+
+#Plot Massachusetts state data only
+Mass_df |> 
+  ggplot(aes(year, cases_per_10000)) + 
+  geom_point() +
+  geom_vline(xintercept = 1963, show.legend = TRUE, color = "chartreuse3") +
+  annotate("text", x = 1963, y = max(Mass_df$cases_per_10000), label = "1963 vaccine introduced", 
+           vjust = 2.5, hjust = 0, color = "chartreuse3") +
+  labs(title = "The rate of measels cases per year in Massachusetts", x = "Year", y = "Rate of Measels cases per 10,000") +
+  theme_bw()
+```
+
+As we can see on all the plots the rate of cases of measles drastically decreases after the vaccine is introduced in the US population.
