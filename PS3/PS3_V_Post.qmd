@@ -1,0 +1,253 @@
+---
+title: "PS3"
+author: "Veronika Post"
+format: html
+editor: visual
+---
+
+# PS3
+
+We plan to explore the relationship between COVID-19 death rates and vaccination rates across US states by visually examining their correlation. This analysis will involve gathering COVID-19 related data from the CDC's API and then extensively processing it to merge the various datasets. Since the population sizes of states vary significantly, we will focus on comparing rates rather than absolute numbers. To facilitate this, we will also source population data from the US Census to accurately calculate these rates.
+
+1. Get an API key from the US Census at https://api.census.gov/data/key_signup.html. Save it an object called census_key.
+
+```{r}
+source("census_key.R")
+```
+
+2. Use an internet search to find information about the US Census APIs to obtain vintage population estimates. Define a variable called api with the URL.
+
+```{r}
+api <- "https://api.census.gov/data/2021/pep/population"
+```
+
+3. Read the documentation for the API and use the httr2 package to prepare a request that gives us 2020 and 2021 population estimates for each state. Save the request in a variable called request, without performing it. Compare the request to the examples in the documentation to see if you are on the right track.
+
+```{r}
+#install.packages("httr2")
+library(httr2)
+# build the request
+request <- request(api) |>
+           req_url_query(get = I("POP_2020,POP_2021,NAME"),
+                         `for` = I("state:*"),
+                         key = census_key)
+request
+```
+
+4. Now perform the request and examine the data that is returned. Save the result to request (overwrite it).
+
+```{r}
+request <- request |> req_perform()
+request
+```
+5. We see the request returned data in JSON format. We can see the content with the function req_body_json, but we want a data frame. Use the jsonlite package to convert the raw JSON data into a data frame. Save it in population.
+
+```{r}
+library(jsonlite)
+```
+
+```{r}
+population <- request |> resp_body_string() |> fromJSON(flatten = TRUE)
+population
+```
+```{r}
+# However, the problem is that it is not a dataframe - it's a matrix.
+class(population)
+```
+
+
+6. Examine the table. Notice 1) it is not tidy, 2) the column types are not what we want, and 3) the first row is a header. Convert population to a tidy dataset. Remove the state ID column and change the name of the column with state names to state_name. Add a column with state abbreviations called state. Make sure you assign the abbreviations for DC and PR correctly. Hint: Start by using the janitor package to make the first row the header.
+
+```{r}
+library(tidyverse)
+library(janitor)
+population <- population |> row_to_names(1) |>
+           as_tibble() |> 
+           select(-state) |>
+           rename(state_name = NAME) |>
+           pivot_longer(-state_name, names_to = "year", values_to = "population") |>
+           mutate(year = str_remove(year, "POP_")) |>
+           mutate(across(-state_name, as.numeric)) |>
+           mutate(state = state.abb[match(state_name, state.name)]) |># R has abbrevs, no DC or PR though
+           mutate(state = case_when(
+             state_name == "District of Columbia" ~ "DC",
+             state_name == "Puerto Rico" ~ "PR",
+             .default = state  # otherwise case
+           ))
+population
+```
+
+7. As a check, make a barplot of states' 2021 populations
+
+```{r}
+population |> 
+  filter(year == 2021) |>
+  mutate(state = reorder(state, population), population=population/10^6) |>
+  ggplot(aes(state, population)) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  labs(title = "State's population in 2021, in millions", x = "State", y = "Population, (mln)")
+```
+
+8. To practice pivot_wider make a bar plot of percent change in population by state.
+
+```{r}
+# pivot_wider() is an inverse of pivot_longer()
+wider <-population |> 
+  pivot_wider(names_from = year, values_from = population)
+head(wider)
+```
+For each state, I assume that the 2020 population is 100%, and calculate what percent is 2021 population value relative to 2020. Then I subtract the 2020 percentage from 2021 percentage. If the result is positive 3% - means that the population grew 3%, if it is negative 3% - means that the population reduced 3%.
+```{r}
+# plot a bar plot of percent change in population by state
+wider |>
+  rename(year_2020 = "2020") |>
+  rename(year_2021 = "2021") |>
+  mutate(perc_change = ((year_2021 - year_2020) / year_2020 * 100)) |>
+  mutate(state = reorder(state, perc_change)) |>
+  ggplot(aes(state, perc_change)) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  labs(title = "Percentage change in populationby state", x = "State", y = "Percent")
+```
+
+
+9. Add the following region numbers to the data:
+
+```{r}
+cdc_regions_list <- list(
+  "1" = c("Connecticut", "Maine", "Massachusetts", "New Hampshire", "Rhode Island", "Vermont"),
+  "2" = c("New Jersey", "New York", "Puerto Rico", "Virgin Islands"),
+  "3" = c("Delaware", "District of Columbia", "Maryland", "Pennsylvania", "Virginia", "West Virginia"),
+  "4" = c("Alabama", "Florida", "Georgia", "Kentucky", "Mississippi", "North Carolina", "South Carolina", "Tennessee"),
+  "5" = c("Illinois", "Indiana", "Michigan", "Minnesota", "Ohio", "Wisconsin"),
+  "6" = c("Arkansas", "Louisiana", "New Mexico", "Oklahoma", "Texas"),
+  "7" = c("Iowa", "Kansas", "Missouri", "Nebraska"),
+  "8" = c("Colorado", "Montana", "North Dakota", "South Dakota", "Utah", "Wyoming"),
+  "9" = c("Arizona", "California", "Hawaii", "Nevada", "American Samoa", "Commonwealth of the Northern Mariana Islands", "Federated States of Micronesia", "Guam", "Marshall Islands", "Republic of Palau"),
+  "10" = c("Alaska", "Idaho", "Oregon", "Washington"))
+
+cdc_regions <- do.call(rbind, lapply(names(cdc_regions_list), function(region) {
+  data.frame(region = region, state_name = cdc_regions_list[[region]])
+})) |>
+  mutate(region = factor(as.numeric(region)))
+```
+
+```{r}
+# joining population and cdc_regions tibbles
+population <- left_join(population, cdc_regions, by = "state_name")
+head(population)
+```
+
+10. Go to https://data.cdc.gov/ and learn about the CDC API for COVID-19 data. Find an API that provides state level data from SARS-COV2 cases and store it in a data frame.
+
+```{r}
+api <- "https://data.cdc.gov/resource/pwn4-m3yp.json"
+cases_raw <- request(api) |> 
+  req_url_query("$limit" = 10000000) |>
+  req_perform() |> resp_body_string() |> 
+  fromJSON(flatten = TRUE)
+
+head(cases_raw)
+```
+
+11. Note that we obtained weekly data. Wrangle the table so that keep only states for which you have population data. Keep the following variables: state, epidemiological week and year, and new cases (as numbers). Order by state, then chronologically. Hint: Use as_date, epiweek and epiyear functions in lubridate package.
+
+```{r}
+library(lubridate)
+```
+
+12. Now repeat the same exercise for hospitalizations. However, before you start, notice the code for extracting the data is the same as in the previous exercise except for the API URL. Write a function that takes an API URL and returns the data in a data frame.
+
+```{r}
+#get_cdc_data <- function(api){
+#}
+api <- "https://data.cdc.gov/resource/39z2-9zu6.json"
+hosp_raw <- request(api) |> 
+  req_url_query("$limit" = 10000000) |>
+  req_perform() |> resp_body_string() |> 
+  fromJSON(flatten = TRUE)
+
+head(hosp_raw)
+```
+
+13. Now use the function to get the raw hospital data. Examine the data once you have it to determine if its daily or weekly.
+
+```{r}
+#hosp_raw <- get_cdc_data()
+```
+
+14. Collapse the data into weekly data and keep the same columns as in the cases dataset, except keep total weekly hospitalizations instead of cases. Remove weeks with less than 7 days reporting.
+
+```{r}
+#hosp <- hosp_raw |>
+```
+
+15. Repeat what you did in the previous two exercises for provisional COVID-19 deaths.
+
+```{r}
+#deaths_raw <- get_cdc_data()
+api <- "https://data.cdc.gov/resource/r8kw-7aab.json"
+deaths_raw <- request(api) |> 
+  req_url_query("$limit" = 10000000) |>
+  req_perform() |> resp_body_string() |> 
+  fromJSON(flatten = TRUE)
+
+head(deaths_raw)
+#deaths <- deaths_raw |>
+```
+
+16. Obtain vaccination data. Keep the variables series_complete and booster along with state and date. Remember we will later want to join with the others.
+
+```{r}
+#vax_raw <- get_cdc_data()
+api <- "https://data.cdc.gov/resource/rh2h-3yt2.json"
+vax_raw <- request(api) |> 
+  req_url_query("$limit" = 10000000) |>
+  req_perform() |> resp_body_string() |> 
+  fromJSON(flatten = TRUE)
+
+head(vax_raw)
+#vax <- vax_raw |> 
+```
+
+17. Now we are ready to join the tables. We will only consider 2020 and 2021 as we don't have population sizes for 2020. However, because we want to guarantee that all dates are included we will create a data frame with all possible weeks. We can use this:
+
+```{r}
+all_dates <- data.frame(date = seq(make_date(2020, 1, 25), make_date(2021, 12, 31), by = "week")) |>
+  mutate(date = ceiling_date(date, unit = "week", week_start = 7) - days(1)) |>
+  mutate(mmwr_year = epiyear(date), mmwr_week = epiweek(date)) 
+
+dates_and_pop <- cross_join(population, all_dates)
+```
+
+Use this to join all the tables in a way that preserves these dates. Call the final table dat.
+
+```{r}
+#dat <- 
+```
+
+18. Plot a trend plot with cases per person for all states with color representing region.
+
+```{r}
+#dat |> ggplot()
+```
+
+19. Repeat the above for hospitalizations and deaths. Use `pivot_longer` and `facet_wrap`. Plot rates per $100,000$ people. Place the plots on top of each other.
+
+```{r}
+#dat |> 
+```
+
+20. For the period January 1 to July 1, 2021 compute the deaths per day per 100,000 people in each state as well as the vaccination rate (primary series) by September 1st. Plot these against each other.
+
+```{r}
+#dat |> 
+```
+
+21. Repeat the exercise for the booster for October 1 to December 31, 2021.
+
+```{r}
+#dat |> 
+```
+
